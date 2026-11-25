@@ -3,6 +3,26 @@
   "version": "0.1.0",
   "description": "Omnia Gate: make any site or API agent-ready in a few lines. Verify agent passports, Sign in with Omnia, and charge per request in USDC on Solana through x402.",
   "license": "MIT",
+  "homepage": "https://omniasuper.app/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1Caine/omnia-gate.git"
+  },
+  "bugs": {
+    "url": "https://github.com/1Caine/omnia-gate/issues"
+  },
+  "author": "Omnia (https://omniasuper.app)",
+  "keywords": [
+    "omnia",
+    "ai-agents",
+    "x402",
+    "solana",
+    "usdc",
+    "middleware",
+    "express",
+    "nextjs",
+    "hono"
+  ],
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
@@ -32,17 +52,6 @@
   "engines": {
     "node": ">=20.19"
   },
-  "keywords": [
-    "omnia",
-    "ai-agents",
-    "x402",
-    "solana",
-    "usdc",
-    "middleware",
-    "express",
-    "nextjs",
-    "hono"
-  ],
   "dependencies": {
     "omnia-sdk": "github:1Caine/omnia-sdk"
   }

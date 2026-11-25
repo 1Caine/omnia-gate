@@ -24,7 +24,7 @@ import {
 import type { PaymentRequired, SettlementResponse } from "../../sdk/src/x402";
 
 /** The public Omnia deployment. Set `omniaUrl` or the `OMNIA_URL` variable to use another one. */
-export const DEFAULT_OMNIA_URL = "https://omnia-superapp.vercel.app";
+export const DEFAULT_OMNIA_URL = "https://omniasuper.app";
 
 /** The public address of the Omnia relayer, which signs the receipts the store gateway attaches to forwarded calls. */
 export const OMNIA_RELAYER = "5u3WuuuhmTWXnUt3WFyRKsWiEessZRCDTZjw4mQA7wqW";

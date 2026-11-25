@@ -11,7 +11,7 @@ import {
   verifySignIn as verifySignInSignature,
   verifyText
 } from "omnia-sdk/protocol";
-var DEFAULT_OMNIA_URL = "https://omnia-superapp.vercel.app";
+var DEFAULT_OMNIA_URL = "https://omniasuper.app";
 var OMNIA_RELAYER = "5u3WuuuhmTWXnUt3WFyRKsWiEessZRCDTZjw4mQA7wqW";
 var PAYMENT = { required: "payment-required", signature: "payment-signature", response: "payment-response" };
 var EXPOSE = { "access-control-expose-headers": "PAYMENT-REQUIRED, PAYMENT-RESPONSE" };

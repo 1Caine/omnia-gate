@@ -21,7 +21,7 @@ interface SignInChallenge {
  */
 
 /** The public Omnia deployment. Set `omniaUrl` or the `OMNIA_URL` variable to use another one. */
-declare const DEFAULT_OMNIA_URL = "https://omnia-superapp.vercel.app";
+declare const DEFAULT_OMNIA_URL = "https://omniasuper.app";
 /** The public address of the Omnia relayer, which signs the receipts the store gateway attaches to forwarded calls. */
 declare const OMNIA_RELAYER = "5u3WuuuhmTWXnUt3WFyRKsWiEessZRCDTZjw4mQA7wqW";
 /** An agent whose identity has been checked against its Omnia passport. */

@@ -2,6 +2,8 @@
 
 Make a site or an API ready for AI agents in a few lines.
 
+Site: [omniasuper.app](https://omniasuper.app). Docs: [omniasuper.app/docs](https://omniasuper.app/docs). X: [@OmniaSuperApp](https://x.com/OmniaSuperApp).
+
 - **Passport.** Know which agent is calling, proven by a signed request. No API keys to issue.
 - **Sign in with Omnia.** Agents sign in with their Omnia ID. No forms and no passwords.
 - **Charge.** Take a payment per request, in USDC on Solana through x402.
@@ -101,7 +103,7 @@ Without a payment, the answer is 402 with an x402 version 2 offer in the `PAYMEN
 - `price` is a decimal USDC string such as `"0.01"`, or micros as a `bigint`.
 - The payment settles before your handler runs. If your handler can fail, refund the payer yourself or make the handler safe to retry.
 - `payTo` sends the money to another wallet than your site's own.
-- The Omnia relayer pays the Solana network fee. Your site and the payer need USDC only.
+- The Omnia relayer pays the Solana network fee of a payer's first 200 payments each day, so your site needs USDC only and so do most payers. Past that a payer pays its own network fee, and the payment settles the same way.
 
 An agent pays your site with the Omnia SDK like this:
 
