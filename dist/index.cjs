@@ -40,7 +40,8 @@ module.exports = __toCommonJS(src_exports);
 // src/gate.ts
 var import_protocol = require("omnia-sdk/protocol");
 var DEFAULT_OMNIA_URL = "https://omniasuper.app";
-var OMNIA_RELAYER = "5u3WuuuhmTWXnUt3WFyRKsWiEessZRCDTZjw4mQA7wqW";
+var OMNIA_RELAYER = "0x2d42a8b3EcBCAB9e00de02D5CeA02D9587b7fA75";
+var explorerTx = (hash) => `https://elysium.kinetiq.xyz/tx/${hash}`;
 var PAYMENT = { required: "payment-required", signature: "payment-signature", response: "payment-response" };
 var EXPOSE = { "access-control-expose-headers": "PAYMENT-REQUIRED, PAYMENT-RESPONSE" };
 var GateError = class extends Error {
@@ -66,9 +67,9 @@ function decodeBase64Json(value) {
 function json(status, body, headers = {}) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
 }
-var deny = (status, code, message, headers = {}) => ({
+var deny = (status, code, message, headers = {}, details = {}) => ({
   ok: false,
-  response: json(status, { error: { code, message } }, headers)
+  response: json(status, { error: { code, message, ...details } }, headers)
 });
 function sameText(a, b) {
   if (a.length !== b.length) return false;
@@ -287,11 +288,16 @@ function verifySignIn(input) {
 function isOffer(body) {
   return body !== null && body.x402Version === 2 && Array.isArray(body.accepts) && body.accepts.length > 0;
 }
+var REMEDIES = ["approval", "sponsorship", "nonce"];
 function upstreamError(body) {
   const e = body?.error;
-  if (e && typeof e === "object" && typeof e.message === "string") return { code: typeof e.code === "string" ? e.code : "payment_failed", message: e.message };
-  if (typeof body?.errorReason === "string") return { code: "payment_failed", message: body.errorReason };
-  return { code: "payment_failed", message: "The payment was not accepted." };
+  if (e && typeof e === "object" && typeof e.message === "string") {
+    const details = {};
+    for (const k of REMEDIES) if (e[k] !== void 0) details[k] = e[k];
+    return { code: typeof e.code === "string" ? e.code : "payment_failed", message: e.message, details };
+  }
+  if (typeof body?.errorReason === "string") return { code: "payment_failed", message: body.errorReason, details: {} };
+  return { code: "payment_failed", message: "The payment was not accepted.", details: {} };
 }
 function chargeGuard(ctx, options) {
   const micros = priceMicros(options.price);
@@ -328,7 +334,7 @@ function chargeGuard(ctx, options) {
         ok: true,
         payment: {
           transaction: settlement.transaction,
-          explorer: `https://solscan.io/tx/${settlement.transaction}`,
+          explorer: explorerTx(settlement.transaction),
           network: settlement.network,
           payer: settlement.payer,
           payerId: typeof b.payerId === "string" ? b.payerId : null,
@@ -342,7 +348,7 @@ function chargeGuard(ctx, options) {
     const why = upstreamError(b);
     const failed = b && typeof b.transaction === "string" ? { [PAYMENT.response]: encodeHeader({ success: false, transaction: b.transaction, network: b.network, payer: b.payer, errorReason: why.message }), ...EXPOSE } : {};
     if (out.status === 429) return deny(429, why.code, why.message);
-    if (out.status === 400 || out.status === 402 || out.status === 409) return deny(402, why.code, why.message, failed);
+    if (out.status === 400 || out.status === 402 || out.status === 409) return deny(402, why.code, why.message, failed, why.details);
     return deny(503, "payment_unavailable", `The payment could not be settled right now: ${why.message}`);
   });
 }
@@ -360,7 +366,7 @@ async function verifyReceipt(headerValue, options) {
   if (!r || typeof r !== "object" || typeof r.slug !== "string" || typeof r.paymentId !== "string" || typeof r.payer !== "string" || typeof r.micros !== "string" || typeof r.timestamp !== "number" || !Number.isInteger(r.timestamp) || typeof r.signer !== "string" || typeof r.signature !== "string") {
     return { ok: false, reason: "malformed" };
   }
-  if (r.signer !== options.relayer) return { ok: false, reason: "signer" };
+  if (!(0, import_protocol.sameAddress)(r.signer, options.relayer)) return { ok: false, reason: "signer" };
   const text = `omnia:v1:receipt
 ${r.slug}
 ${r.paymentId}

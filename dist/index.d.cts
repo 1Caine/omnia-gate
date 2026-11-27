@@ -16,21 +16,21 @@ interface SignInChallenge {
  * around these guards.
  *
  * Gate is non-custodial. It never sees a payer's key and never holds money:
- * a paying agent sends USDC straight to the site's own wallet, with the
- * platform fee as a split of the same Solana transaction.
+ * a paying agent sends USDC on Elysium straight to the site's own wallet,
+ * with the platform fee as a split of the same transaction.
  */
 
 /** The public Omnia deployment. Set `omniaUrl` or the `OMNIA_URL` variable to use another one. */
 declare const DEFAULT_OMNIA_URL = "https://omniasuper.app";
 /** The public address of the Omnia relayer, which signs the receipts the store gateway attaches to forwarded calls. */
-declare const OMNIA_RELAYER = "5u3WuuuhmTWXnUt3WFyRKsWiEessZRCDTZjw4mQA7wqW";
+declare const OMNIA_RELAYER = "0x2d42a8b3EcBCAB9e00de02D5CeA02D9587b7fA75";
 /** An agent whose identity has been checked against its Omnia passport. */
 interface GateAgent {
     /** The handle without the suffix: "scout". */
     handle: string;
     /** The Omnia ID as it is written: "scout.omnia". */
     id: string;
-    /** The agent's public key in base58, which is also its Solana address. */
+    /** The agent's 0x address on Elysium. Its key signs its requests and holds its own wallet. */
     address: string;
     /** True when a wallet has signed as the owner of this agent. */
     ownerVerified: boolean;
@@ -45,7 +45,7 @@ interface GateConfig {
     omniaUrl?: string;
     /** The site's own Omnia ID, needed for `charge`. Defaults to `OMNIA_HANDLE`. */
     handle?: string;
-    /** The site's own secret key, needed for `charge`. Defaults to `OMNIA_SECRET_KEY`. It signs requests to Omnia and is never sent. */
+    /** The site's own private key (0x and 64 hex characters), needed for `charge`. Defaults to `OMNIA_SECRET_KEY`. It signs requests to Omnia and is never sent. */
     secretKey?: string | Uint8Array | number[];
     /** The secret that makes sign-in nonces. Defaults to `OMNIA_GATE_SECRET`, then to a value derived from the site's secret key. */
     signInSecret?: string;
@@ -61,11 +61,11 @@ interface GateConfig {
     env?: Record<string, string | undefined>;
 }
 interface GatePayment {
-    /** The Solana transaction signature. */
+    /** The hash of the transaction on Elysium that settled the payment. */
     transaction: string;
     explorer: string;
     network: string;
-    /** The wallet the USDC left. */
+    /** The wallet the USDC left: the agent's own address, or its guarded wallet. */
     payer: string;
     /** The payer's Omnia ID when it has one. */
     payerId: string | null;
@@ -172,6 +172,11 @@ declare function verifySignIn(input: {
  * Charge for a request. Without a payment the answer is 402 with an x402
  * offer. With one, Omnia checks and settles it, and the request goes through
  * with a PAYMENT-RESPONSE header. The payment settles before your handler runs.
+ *
+ * A refusal the payer can remedy is answered 402 with Omnia's code and details:
+ * `approval_required` (the wallet's first payment needs a USDC permit),
+ * `sponsorship_unavailable` (the payer submits the payment and pays its own gas)
+ * and `stale_transaction`. The Omnia SDK answers all three by itself.
  */
 declare function charge(options: ChargeOptions & GateConfig): Guard<ChargeResult>;
 /**

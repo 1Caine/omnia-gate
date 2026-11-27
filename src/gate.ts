@@ -5,14 +5,15 @@
  * around these guards.
  *
  * Gate is non-custodial. It never sees a payer's key and never holds money:
- * a paying agent sends USDC straight to the site's own wallet, with the
- * platform fee as a split of the same Solana transaction.
+ * a paying agent sends USDC on Elysium straight to the site's own wallet,
+ * with the platform fee as a split of the same transaction.
  */
 import {
   HEADER,
   displayHandle,
   hmacHex,
   normalizeHandle,
+  sameAddress,
   seedFromSecret,
   sha256Hex,
   signRequest,
@@ -27,7 +28,10 @@ import type { PaymentRequired, SettlementResponse } from "../../sdk/src/x402";
 export const DEFAULT_OMNIA_URL = "https://omniasuper.app";
 
 /** The public address of the Omnia relayer, which signs the receipts the store gateway attaches to forwarded calls. */
-export const OMNIA_RELAYER = "5u3WuuuhmTWXnUt3WFyRKsWiEessZRCDTZjw4mQA7wqW";
+export const OMNIA_RELAYER = "0x2d42a8b3EcBCAB9e00de02D5CeA02D9587b7fA75";
+
+/** Where a transaction on Elysium can be looked up. */
+const explorerTx = (hash: string): string => `https://elysium.kinetiq.xyz/tx/${hash}`;
 
 const PAYMENT = { required: "payment-required", signature: "payment-signature", response: "payment-response" } as const;
 const EXPOSE = { "access-control-expose-headers": "PAYMENT-REQUIRED, PAYMENT-RESPONSE" } as const;
@@ -42,7 +46,7 @@ export interface GateAgent {
   handle: string;
   /** The Omnia ID as it is written: "scout.omnia". */
   id: string;
-  /** The agent's public key in base58, which is also its Solana address. */
+  /** The agent's 0x address on Elysium. Its key signs its requests and holds its own wallet. */
   address: string;
   /** True when a wallet has signed as the owner of this agent. */
   ownerVerified: boolean;
@@ -59,7 +63,7 @@ export interface GateConfig {
   omniaUrl?: string;
   /** The site's own Omnia ID, needed for `charge`. Defaults to `OMNIA_HANDLE`. */
   handle?: string;
-  /** The site's own secret key, needed for `charge`. Defaults to `OMNIA_SECRET_KEY`. It signs requests to Omnia and is never sent. */
+  /** The site's own private key (0x and 64 hex characters), needed for `charge`. Defaults to `OMNIA_SECRET_KEY`. It signs requests to Omnia and is never sent. */
   secretKey?: string | Uint8Array | number[];
   /** The secret that makes sign-in nonces. Defaults to `OMNIA_GATE_SECRET`, then to a value derived from the site's secret key. */
   signInSecret?: string;
@@ -76,11 +80,11 @@ export interface GateConfig {
 }
 
 export interface GatePayment {
-  /** The Solana transaction signature. */
+  /** The hash of the transaction on Elysium that settled the payment. */
   transaction: string;
   explorer: string;
   network: string;
-  /** The wallet the USDC left. */
+  /** The wallet the USDC left: the agent's own address, or its guarded wallet. */
   payer: string;
   /** The payer's Omnia ID when it has one. */
   payerId: string | null;
@@ -168,9 +172,9 @@ function json(status: number, body: unknown, headers: Record<string, string> = {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
 }
 
-const deny = (status: number, code: string, message: string, headers: Record<string, string> = {}): Denied => ({
+const deny = (status: number, code: string, message: string, headers: Record<string, string> = {}, details: Record<string, unknown> = {}): Denied => ({
   ok: false,
-  response: json(status, { error: { code, message } }, headers),
+  response: json(status, { error: { code, message, ...details } }, headers),
 });
 
 function sameText(a: string, b: string): boolean {
@@ -461,11 +465,22 @@ function isOffer(body: Record<string, unknown> | null): body is Record<string, u
   return body !== null && body.x402Version === 2 && Array.isArray(body.accepts) && body.accepts.length > 0;
 }
 
-function upstreamError(body: Record<string, unknown> | null): { code: string; message: string } {
-  const e = body?.error as { code?: unknown; message?: unknown } | undefined;
-  if (e && typeof e === "object" && typeof e.message === "string") return { code: typeof e.code === "string" ? e.code : "payment_failed", message: e.message };
-  if (typeof body?.errorReason === "string") return { code: "payment_failed", message: body.errorReason };
-  return { code: "payment_failed", message: "The payment was not accepted." };
+/**
+ * What Omnia says a payer can do about a refusal, passed on to the payer as it is: the USDC permit a wallet's
+ * first payment needs (`approval`), why the relayer will not pay the gas and until when (`sponsorship`), and
+ * the payer's current transaction number when the transaction it signed is out of date (`nonce`).
+ */
+const REMEDIES = ["approval", "sponsorship", "nonce"] as const;
+
+function upstreamError(body: Record<string, unknown> | null): { code: string; message: string; details: Record<string, unknown> } {
+  const e = body?.error as Record<string, unknown> | undefined;
+  if (e && typeof e === "object" && typeof e.message === "string") {
+    const details: Record<string, unknown> = {};
+    for (const k of REMEDIES) if (e[k] !== undefined) details[k] = e[k];
+    return { code: typeof e.code === "string" ? e.code : "payment_failed", message: e.message, details };
+  }
+  if (typeof body?.errorReason === "string") return { code: "payment_failed", message: body.errorReason, details: {} };
+  return { code: "payment_failed", message: "The payment was not accepted.", details: {} };
 }
 
 function chargeGuard(ctx: Context, options: ChargeOptions): Guard<ChargeResult> {
@@ -505,7 +520,7 @@ function chargeGuard(ctx: Context, options: ChargeOptions): Guard<ChargeResult> 
         ok: true,
         payment: {
           transaction: settlement.transaction,
-          explorer: `https://solscan.io/tx/${settlement.transaction}`,
+          explorer: explorerTx(settlement.transaction),
           network: settlement.network,
           payer: settlement.payer,
           payerId: typeof b.payerId === "string" ? b.payerId : null,
@@ -519,7 +534,7 @@ function chargeGuard(ctx: Context, options: ChargeOptions): Guard<ChargeResult> 
     const why = upstreamError(b);
     const failed = b && typeof b.transaction === "string" ? { [PAYMENT.response]: encodeHeader({ success: false, transaction: b.transaction, network: b.network, payer: b.payer, errorReason: why.message }), ...EXPOSE } : {};
     if (out.status === 429) return deny(429, why.code, why.message);
-    if (out.status === 400 || out.status === 402 || out.status === 409) return deny(402, why.code, why.message, failed);
+    if (out.status === 400 || out.status === 402 || out.status === 409) return deny(402, why.code, why.message, failed, why.details);
     return deny(503, "payment_unavailable", `The payment could not be settled right now: ${why.message}`);
   });
 }
@@ -528,6 +543,11 @@ function chargeGuard(ctx: Context, options: ChargeOptions): Guard<ChargeResult> 
  * Charge for a request. Without a payment the answer is 402 with an x402
  * offer. With one, Omnia checks and settles it, and the request goes through
  * with a PAYMENT-RESPONSE header. The payment settles before your handler runs.
+ *
+ * A refusal the payer can remedy is answered 402 with Omnia's code and details:
+ * `approval_required` (the wallet's first payment needs a USDC permit),
+ * `sponsorship_unavailable` (the payer submits the payment and pays its own gas)
+ * and `stale_transaction`. The Omnia SDK answers all three by itself.
  */
 export function charge(options: ChargeOptions & GateConfig): Guard<ChargeResult> {
   return chargeGuard(context(options), options);
@@ -567,7 +587,7 @@ export async function verifyReceipt(
   ) {
     return { ok: false, reason: "malformed" };
   }
-  if (r.signer !== options.relayer) return { ok: false, reason: "signer" };
+  if (!sameAddress(r.signer, options.relayer)) return { ok: false, reason: "signer" };
   const text = `omnia:v1:receipt\n${r.slug}\n${r.paymentId}\n${r.payer}\n${r.micros}\n${r.timestamp}`;
   if (!(await verifyText(options.relayer, text, r.signature))) return { ok: false, reason: "signature" };
   const now = options.now ?? Math.floor(Date.now() / 1000);

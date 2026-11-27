@@ -6,9 +6,9 @@ Site: [omniasuper.app](https://omniasuper.app). Docs: [omniasuper.app/docs](http
 
 - **Passport.** Know which agent is calling, proven by a signed request. No API keys to issue.
 - **Sign in with Omnia.** Agents sign in with their Omnia ID. No forms and no passwords.
-- **Charge.** Take a payment per request, in USDC on Solana through x402.
+- **Charge.** Take a payment per request, in USDC on Elysium through x402.
 
-Gate is non-custodial. It never sees a payer's key and never holds funds. A paying agent sends USDC straight to your own wallet, with the platform fee as a split of the same Solana transaction.
+Gate is non-custodial. It never sees a payer's key and never holds funds. A paying agent sends USDC straight to your own wallet, with the platform fee as a split of the same transaction on Elysium.
 
 ## Install
 
@@ -20,10 +20,10 @@ Charging needs an Omnia ID for your site, because that is the wallet that gets p
 
 ```sh
 OMNIA_HANDLE=my-site
-OMNIA_SECRET_KEY=...   # from ~/.omnia/identity.json, kept on your server
+OMNIA_SECRET_KEY=0x...   # from ~/.omnia/identity.json, kept on your server
 ```
 
-The wallet must hold some USDC before it can be paid, so send it any amount once. Passport checks and sign-in need no Omnia ID of your own.
+Your site's wallet is the 0x address of that key, and it needs nothing in it to be paid. Passport checks and sign-in need no Omnia ID of your own.
 
 ## Express
 
@@ -103,7 +103,9 @@ Without a payment, the answer is 402 with an x402 version 2 offer in the `PAYMEN
 - `price` is a decimal USDC string such as `"0.01"`, or micros as a `bigint`.
 - The payment settles before your handler runs. If your handler can fail, refund the payer yourself or make the handler safe to retry.
 - `payTo` sends the money to another wallet than your site's own.
-- The Omnia relayer pays the Solana network fee of a payer's first 200 payments each day, so your site needs USDC only and so do most payers. Past that a payer pays its own network fee, and the payment settles the same way.
+- The Omnia relayer pays the gas of a payer's first 200 payments each day, so your site needs no HYPE and neither do most payers. Past that a payer submits the payment itself and pays its own gas, and the payment settles the same way.
+- A refusal the payer can remedy is answered 402 with Omnia's own code and details in the body: `approval_required` (a wallet's first payment needs a USDC permit, and `approval` says what to sign), `sponsorship_unavailable` (the payer pays its own gas, and `sponsorship` says until when) and `stale_transaction`. The Omnia SDK answers all three by itself, so a paying agent sees one call.
+- `req.omnia.payment` (or the third argument of a `withGate` handler) carries `transaction`, the transaction hash on Elysium, `explorer`, `payer`, `payerId`, `amount`, `toPublisher` and `platformFee`.
 
 An agent pays your site with the Omnia SDK like this:
 
@@ -122,7 +124,7 @@ const check = await verifyReceipt(request.headers.get("x-omnia-receipt"), { rela
 if (!check.ok) return new Response("Not paid", { status: 402 });
 ```
 
-The receipt names the program, the payment, the payer and the amount, and is refused when it is older than five minutes (`maxAgeSeconds`).
+The receipt names the program, the payment, the payer and the amount, and is refused when it is older than five minutes (`maxAgeSeconds`). `OMNIA_RELAYER` is the relayer's 0x address, and the receipt is a message signed with its key (EIP-191).
 
 ## Settings
 
@@ -131,7 +133,7 @@ The receipt names the program, the payment, the payer and the amount, and is ref
 | Setting | Default | What it is |
 | --- | --- | --- |
 | `omniaUrl` | `OMNIA_URL`, then the public deployment | The Omnia deployment to use. |
-| `handle`, `secretKey` | `OMNIA_HANDLE`, `OMNIA_SECRET_KEY` | Your site's own Omnia ID, for `charge`. |
+| `handle`, `secretKey` | `OMNIA_HANDLE`, `OMNIA_SECRET_KEY` | Your site's own Omnia ID, for `charge`. The key is 0x and 64 hex characters. |
 | `signInSecret` | `OMNIA_GATE_SECRET`, then derived from your key | The secret behind sign-in nonces. |
 | `keyTtlMs` | 300000 | How long a resolved passport is kept. |
 | `skewSeconds` | 60 | How far a request's timestamp may be from your clock. |
